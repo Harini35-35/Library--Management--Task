@@ -1,108 +1,83 @@
+const express = require("express");
 const mongoose = require("mongoose");
 const Book = require("./book");
+
+const app = express();
+app.use(express.json());
 
 mongoose.connect("mongodb://127.0.0.1:27017/libraryDB")
   .then(() => console.log("MongoDB Connected"))
   .catch(err => console.error(err));
 
 /* ---------------- CREATE ---------------- */
-
-// Insert minimum 7 books
-async function insertBooks() {
-  await Book.insertMany([
-    { title: "Clean Code", author: "Robert Martin", category: "Programming", publishedYear: 2014, availableCopies: 5 },
-    { title: "Atomic Habits", author: "James Clear", category: "Self-Help", publishedYear: 2018, availableCopies: 4 },
-    { title: "Deep Work", author: "Cal Newport", category: "Productivity", publishedYear: 2016, availableCopies: 3 },
-    { title: "AI Basics", author: "Tom Taulli", category: "Technology", publishedYear: 2020, availableCopies: 6 },
-    { title: "Python Crash Course", author: "Eric Matthes", category: "Programming", publishedYear: 2019, availableCopies: 2 },
-    { title: "The Alchemist", author: "Paulo Coelho", category: "Fiction", publishedYear: 1993, availableCopies: 1 },
-    { title: "Think Fast and Slow", author: "Daniel Kahneman", category: "Psychology", publishedYear: 2011, availableCopies: 3 }
-  ]);
-  console.log("Books inserted");
-}
+// Insert book
+app.post("/books", async (req, res) => {
+  try {
+    const book = new Book(req.body);
+    await book.save();
+    res.status(201).send(book);
+  } catch (err) {
+    res.status(400).send("Invalid book data");
+  }
+});
 
 /* ---------------- READ ---------------- */
-
 // All books
-async function getAllBooks() {
+app.get("/books", async (req, res) => {
   const books = await Book.find();
-  console.log(books);
-}
+  res.send(books);
+});
 
 // Books by category
-async function getBooksByCategory(category) {
-  const books = await Book.find({ category });
-  console.log(books);
-}
+app.get("/books/category/:category", async (req, res) => {
+  const books = await Book.find({ category: req.params.category });
+  res.send(books);
+});
 
-// Books after year 2015
-async function getBooksAfter2015() {
+// Books after 2015
+app.get("/books/after/2015", async (req, res) => {
   const books = await Book.find({ publishedYear: { $gt: 2015 } });
-  console.log(books);
-}
+  res.send(books);
+});
 
 /* ---------------- UPDATE ---------------- */
+// Increase / decrease copies
+app.put("/books/:id/copies", async (req, res) => {
+  const { change } = req.body;
+  const book = await Book.findById(req.params.id);
 
-// Increase / decrease copies (with negative stock prevention)
-async function updateCopies(bookId, change) {
-  const book = await Book.findById(bookId);
-
-  if (!book) {
-    console.log("Error: Book not found");
-    return;
-  }
-
-  if (book.availableCopies + change < 0) {
-    console.log("Error: Negative stock not allowed");
-    return;
-  }
+  if (!book) return res.status(404).send("Book not found");
+  if (book.availableCopies + change < 0)
+    return res.status(400).send("Negative stock not allowed");
 
   book.availableCopies += change;
   await book.save();
-  console.log("Copies updated");
-}
+  res.send(book);
+});
 
 // Change category
-async function changeCategory(bookId, newCategory) {
-  const book = await Book.findById(bookId);
+app.put("/books/:id/category", async (req, res) => {
+  const book = await Book.findById(req.params.id);
+  if (!book) return res.status(404).send("Book not found");
 
-  if (!book) {
-    console.log("Error: Book not found");
-    return;
-  }
-
-  book.category = newCategory;
+  book.category = req.body.category;
   await book.save();
-  console.log("Category updated");
-}
+  res.send(book);
+});
 
 /* ---------------- DELETE ---------------- */
+// Delete if copies = 0
+app.delete("/books/:id", async (req, res) => {
+  const book = await Book.findById(req.params.id);
 
-// Remove book if copies = 0
-async function deleteIfZeroCopies(bookId) {
-  const book = await Book.findById(bookId);
+  if (!book) return res.status(404).send("Book not found");
+  if (book.availableCopies !== 0)
+    return res.status(400).send("Copies not zero");
 
-  if (!book) {
-    console.log("Error: Book not found");
-    return;
-  }
+  await Book.findByIdAndDelete(req.params.id);
+  res.send("Book deleted");
+});
 
-  if (book.availableCopies === 0) {
-    await Book.findByIdAndDelete(bookId);
-    console.log("Book deleted");
-  } else {
-    console.log("Error: Cannot delete book with available copies");
-  }
-}
+app.listen(3000, () => console.log("Server running on port 3000"));
 
-/* ---------------- CALL FUNCTIONS ---------------- */
-
-// Uncomment as needed
-// insertBooks();
-// getAllBooks();
-// getBooksByCategory("Programming");
-// getBooksAfter2015();
-// updateCopies("BOOK_ID", -1);
-// changeCategory("BOOK_ID", "Computer Science");
-// deleteIfZeroCopies("BOOK_ID");
 
